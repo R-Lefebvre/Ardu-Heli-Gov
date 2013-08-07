@@ -1,0 +1,29 @@
+#######################################
+# Syntax Coloring Map for GPS Library
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+GPS	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+process_GPS_data	KEYWORD2
+GPS_Valid	KEYWORD2
+New_Data	KEYWORD2
+Altitude	KEYWORD2
+Speed	KEYWORD2
+CMG	KEYWORD2
+Lat	KEYWORD2
+Lon	KEYWORD2
+TimeStamp	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+GPS_STR_SIZE	LITERAL1
