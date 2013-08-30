@@ -37,6 +37,11 @@ requires input of number of poles, and gear ratio.
 
 #include <SCDriver.h> 
 
+#define ENABLED 1
+#define DISABLED 0
+
+#define Serial_Debug DISABLED
+
 #define PID_kp 1.0
 #define PID_ki 0.0
 #define PID_imax 0.0
@@ -81,29 +86,22 @@ unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control
 
 
 
-
 long PID_integrator;							// Integrator for the PID loop
-
 
 unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
 
 SCDriver SCOutput;								// Create Speed Control output object
 
-
-
 void setup(){
-   Serial.begin(9600);
+   
    pinMode(RPM_Input_1, INPUT_PULLUP);
    pinMode(Arming_Pin, INPUT_PULLUP);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
-   pinMode(BoardLED, OUTPUT);
-   Serial.println("Tachometer Test");
-   Serial.print("Startup Micros:");
-   Serial.println(micros());
-   Serial.print("Startup Timing:");
-   Serial.println(timing);
-         
+   pinMode(BoardLED, OUTPUT);  
+#if Serial_Debug == ENABLED
+    serial_debug_init();
+#endif
 }
 
 void loop(){
@@ -208,7 +206,9 @@ void slowloop(){			//10hz stuff goes here
 
 void superslowloop(){		//1hz stuff goes here
 
-	print_status();	
+#if Serial_Debug == ENABLED
+	do_serial_debug();	
+#endif
 
 }
 
@@ -255,18 +255,7 @@ bool armed(){
 	}
 }
 
-void print_status(){
-	
-	Serial.print ("RPM =");
-	Serial.println(rpm_measured);
-	Serial.print ("RPM Demand =");
-	Serial.println(rpm_demand);
-	Serial.print ("Error =");
-	Serial.println(rpm_error);
-	Serial.print ("Torque =");
-	Serial.println (torque_demand);
-	
-}
+
 
 float get_pi(float error, float dt){
 
@@ -309,3 +298,28 @@ bool micros_overflow(){
 		return true;
 	}
 }
+
+#if Serial_Debug == ENABLED
+
+void serial_debug_init(){
+    Serial.begin(9600);
+    Serial.println("Tachometer Test");
+    Serial.print("Startup Micros:");
+    Serial.println(micros());
+    Serial.print("Startup Timing:");
+    Serial.println(timing);
+}
+
+void do_serial_debug(){	
+	Serial.print ("RPM =");
+	Serial.println(rpm_measured);
+	Serial.print ("RPM Demand =");
+	Serial.println(rpm_demand);
+	Serial.print ("Error =");
+	Serial.println(rpm_error);
+	Serial.print ("Torque =");
+	Serial.println (torque_demand);
+}
+
+#endif
+
