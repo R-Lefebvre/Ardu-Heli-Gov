@@ -41,6 +41,7 @@ requires input of number of poles, and gear ratio.
 #define DISABLED 0
 
 #define Serial_Debug DISABLED
+#define FrSky_Telemetry ENABLED
 
 #define PID_kp 1.0
 #define PID_ki 0.0
@@ -102,6 +103,9 @@ void setup(){
 #if Serial_Debug == ENABLED
     serial_debug_init();
 #endif
+#if FrSky_Telemetry == ENABLED
+    frsky_init();
+#endif
 }
 
 void loop(){
@@ -145,6 +149,10 @@ unsigned long timer = millis();						// Time in milliseconds of current loop
 		superslowloop();
 	
 	}
+    
+    #if FrSky_Telemetry == ENABLED
+        telemetry_frsky();
+    #endif
 	
 }
 
@@ -323,3 +331,97 @@ void do_serial_debug(){
 
 #endif
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+FrSky Telemetry
+Based on work for Multiwii by "Quadbow"
+
+*/
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if FrSky_Telemetry == ENABLED
+
+// Frame protocol
+#define PROTOCOL_HEADER    0x5E
+#define PROTOCOL_TAIL      0x5E
+
+// Data Ids  (bp = before point; af = after point)
+// Official data IDs
+
+#define ID_RPM                0x03
+
+void frsky_init(){
+    Serial.begin(9600);
+}
+
+void telemetry_frsky(){
+    static unsigned long lastTime;
+    static unsigned int tele_loop;
+    if ((millis() - lastTime) > 250) {
+        // Data sent every 250ms
+        lastTime = millis();
+        tele_loop++;         
+        // Data sent every 1s
+        switch (tele_loop) {
+            case 1:               
+            break;
+            case 2:
+                send_RPM();               
+            break;
+            case 3:
+            break;
+            case 4:
+               send_RPM();
+               tele_loop = 0;
+            break;
+            default:
+            break;
+        }
+    sendDataTail();         
+    }
+}
+
+void inline write_FrSky8(uint8_t Data){
+    Serial.write(Data);
+}
+
+void inline write_FrSky16(uint16_t Data){
+    uint8_t Data_send;
+    Data_send = Data;      
+    check_FrSky_stuffing(Data_send);
+    Data_send = Data >> 8 & 0xff;
+    check_FrSky_stuffing(Data_send);
+}
+   
+void inline check_FrSky_stuffing(uint8_t Data){                 //Byte Stuffing Necessary for FrSky Protocol
+    if (Data == 0x5E){
+        write_FrSky8(0x5D);
+        write_FrSky8(0x3E);
+    }
+    else if (Data == 0x5D){
+        write_FrSky8(0x5D);
+        write_FrSky8(0x3D);
+    }
+    else{
+        write_FrSky8(Data);         
+    }
+}
+
+static void inline sendDataHead(uint8_t Data_id){
+    write_FrSky8(PROTOCOL_HEADER);
+    write_FrSky8(Data_id);
+}
+
+static void inline sendDataTail(void){
+    write_FrSky8(PROTOCOL_TAIL);      
+}
+
+// RPM
+void inline send_RPM(void){
+    unsigned long Data_RPM = long(rpm_measured);
+
+    sendDataHead(ID_RPM);
+    write_FrSky16(Data_RPM);
+}
+
+#endif //FrSky_Telemetry
