@@ -289,14 +289,12 @@ void serial_debug_init(){
 void do_serial_debug(){	
 	Serial.print ("RPM =");
 	Serial.println(rpm_measured);
-    #if Governor_Mode == ENABLED
 	Serial.print ("RPM Demand =");
 	Serial.println(rpm_demand);
 	Serial.print ("Error =");
 	Serial.println(rpm_error);
 	Serial.print ("Torque =");
 	Serial.println (torque_demand);
-    #endif
 }
 
 #endif
