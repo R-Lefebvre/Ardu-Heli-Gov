@@ -36,6 +36,8 @@ requires input of number of poles, and gear ratio.
 */
 
 #include <SCDriver.h> 
+#include <Wire.h>
+#include <FastSerial.h>
 #include "config.h"
 
 float rpm_measured = 0.0;						// Latest measured RPM value
@@ -67,12 +69,56 @@ unsigned int rotation_time;					// Time in microseconds for one rotation of roto
 
 SCDriver SCOutput;								// Create Speed Control output object
 
+#if I2C == ENABLED
+
+// where we store the values
+static uint8_t	mode_register;
+static uint8_t	config_register;
+
+// incoming data buffer
+static uint8_t 	mode_data;
+static uint8_t 	config_data;
+
+// new data flag
+static bool 	mode_available;
+static bool 	config_available;
+
+struct reg_map {
+	uint8_t status;			// I2C status
+	int16_t rpm_1;	// My Data
+	int16_t rpm_2;
+	int16_t rpm_3;  // My Data
+	int16_t temp_1;
+	uint8_t	mode;			// register values
+	uint8_t	config;			// register values
+	uint8_t	id;				// never changes
+};
+
+// buffer
+static union {
+	reg_map map;
+	uint8_t bytes[];
+} _buffer;
+
+#endif
+
 void setup(){
    pinMode(RPM_Input_1_Pin, RPM_Input_1_Mode);
    pinMode(Arming_Pin, Arming_Mode);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
    pinMode(BoardLED, OUTPUT);
+
+#if I2C == ENABLED
+
+	// setup the I2C slave
+	Wire.begin(SLAVE_ADDRESS);
+	Wire.onRequest(requestEvent);
+	Wire.onReceive(receiveEvent);
+
+	// init our device ID
+	_buffer.map.id 			= DEVICE_ID;
+#endif
 
 #if Serial_Debug == ENABLED
     serial_debug_init();
@@ -292,6 +338,28 @@ void do_serial_debug(){
 	Serial.println(rpm_measured);
 	Serial.println ("------------------");
 
+	#if I2C == ENABLED
+	Serial.println("I2C Info");
+    //Serial.println("buff: %d\n", sizeof(_buffer));
+    Serial.print ("Status = ");
+    Serial.println(_buffer.map.status);
+    Serial.print ("RPM 1 = ");
+    Serial.println(_buffer.map.rpm_1);
+    Serial.print ("RPM 2 = ");
+    Serial.println(_buffer.map.rpm_2);
+    Serial.print ("RPM 3 = ");
+    Serial.println(_buffer.map.rpm_3);
+    Serial.print ("Temp 1 = ");
+    Serial.println(_buffer.map.temp_1);
+    Serial.print ("Mode = ");
+    Serial.println(_buffer.map.mode);
+    Serial.print ("Config = ");
+    Serial.println(_buffer.map.config);
+    Serial.print ("Device ID = ");
+    Serial.println(_buffer.map.id);
+    Serial.println ("------------------");
+    #endif
+
 	#if Governor_Mode == ENABLED
 	Serial.println("Governor Info");
 	Serial.print ("RPM Demand = ");
@@ -400,3 +468,61 @@ void inline send_RPM(void){
 }
 
 #endif //FrSky_Telemetry
+
+#if I2C == ENABLED
+void changeModeConfig()
+{
+	 if(mode_available){
+		mode_register 		= mode_data;
+		mode_available		= false;		// always make sure to reset the flags before returning from the function
+		mode_data 			= 0;
+	}
+
+	if(config_available){
+		config_register 	= config_data;
+		config_available 	= false;		// always make sure to reset the flags before returning from the function
+		config_data 		= 0;
+	}
+}
+
+void requestEvent()
+{
+    // copy over rpm values
+	_buffer.map.rpm_1 = rpm_measured;   // attach measured rpm 1
+	_buffer.map.rpm_2 = 0;              // Pending more rpm inputs
+	_buffer.map.rpm_3 = 0;              // Pending more rpm inputs
+	_buffer.map.temp_1 = 0;             // Pending temperature input
+
+	//Set the buffer to send all bytes
+	Wire.write(_buffer.bytes, sizeof(_buffer));
+}
+
+void receiveEvent(int bytesReceived)
+{
+    /*
+	for (int a = 0; a < bytesReceived; a++){
+		if(a < MAX_SENT_BYTES){
+			receivedCommands[a] = Wire.read();
+		} else {
+			Wire.read();	// if we receive more data then allowed just throw it away
+		}
+	}
+
+	switch(receivedCommands[0]){
+		case MODE_REG:
+			mode_available = true; // this variable is a status flag to let us know we have new data in register MODE_REG
+			mode_data = receivedCommands[1]; // save the data to a separate variable
+			break;
+
+		case CONFIG_REG:
+			config_available = true;
+			config_data = receivedCommands[1];
+			break;
+
+		default:
+			return; // ignore the commands and return
+
+	}
+	*/
+}
+#endif
