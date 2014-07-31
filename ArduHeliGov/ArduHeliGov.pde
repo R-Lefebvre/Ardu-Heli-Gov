@@ -36,35 +36,11 @@ requires input of number of poles, and gear ratio.
 */
 
 #include <SCDriver.h> 
+#include <Wire.h>
+#include <FastSerial.h>
+#include "config.h"
 
-#define ENABLED 1
-#define DISABLED 0
-
-#define Serial_Debug DISABLED
-#define FrSky_Telemetry ENABLED
-
-#define PID_kp 1.0
-#define PID_ki 0.0
-#define PID_imax 0.0
-
-#define BoardLED 13
-#define RPM_Input_1 2
-#define Arming_Pin 4
-#define SCOutput_Pin 8
-#define Direct_Measurement 1
-#define Motor_Measurement 2
-#define Measurement_Type Direct_Measurement
-#define Motor_Poles 2
-#define Gear_Ratio 2
-#define PulsesPerRevolution 1
-#define RSC_Ramp_Up_Rate 10						// Soft Start Ramp Rate in seconds
-#define Target_RPM 1000
-
-
-float rpm_measured = 0.0;							// Latest measured RPM value
-float rpm_demand;								// RPM setpoint after the soft-start ramp
-float rpm_error;								// Current RPM error
-int	torque_demand;								// % throttle to request from controller
+float rpm_measured = 0.0;						// Latest measured RPM value
 volatile unsigned long trigger_time = 0;		// Trigger time of latest interrupt
 volatile unsigned long trigger_time_old = 0;	// Trigger time of last interrupt
 unsigned long last_calc_time = 0;				// Trigger time of last speed calculated
@@ -75,34 +51,79 @@ bool timing_overflow_skip = true;				// Bit used to signal micros() timer overfl
 												// the first data point collected after booting
 												// because it is flaky.
 
+#if Governor_Mode == ENABLED
+float rpm_demand;								// RPM setpoint after the soft-start ramp
+float rpm_error;								// Current RPM error
+int	torque_demand;								// % throttle to request from controller
+long PID_integrator;							// Integrator for the PID loop
+#endif
 
-
-unsigned long fast_loop_timer = 0;			// Time in microseconds of 1000hz control loop
+unsigned long fast_loop_timer = 0;			    // Time in microseconds of 1000hz control loop
 unsigned long last_fast_loop_timer = 0;		// Time in microseconds of the previous fast loop
-unsigned long fiftyhz_loop_timer = 0;		// Time in milliseconds of 50hz control loop
-unsigned long last_fiftyhz_loop_timer = 0;	// Time in milliseconds of the previous loop, used to calculate dt
-unsigned int fiftyhz_dt= 0 ;				// Time since the last 50 Hz loop
+unsigned long fiftyhz_loop_timer = 0;		    // Time in milliseconds of 50hz control loop
+unsigned long last_fiftyhz_loop_timer = 0;	    // Time in milliseconds of the previous loop, used to calculate dt
+unsigned int fiftyhz_dt= 0 ;				    // Time since the last 50 Hz loop
 unsigned long tenhz_loop_timer = 0;			// Time in milliseconds of the 10hz control loop
 unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control loop
-
-
-
-long PID_integrator;							// Integrator for the PID loop
-
-unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
+unsigned int rotation_time;					// Time in microseconds for one rotation of rotor
 
 SCDriver SCOutput;								// Create Speed Control output object
 
+#if I2C == ENABLED
+
+// where we store the values
+static uint8_t	mode_register;
+static uint8_t	config_register;
+
+// incoming data buffer
+static uint8_t 	mode_data;
+static uint8_t 	config_data;
+
+// new data flag
+static bool 	mode_available;
+static bool 	config_available;
+
+struct reg_map {
+	uint8_t status;			// I2C status
+	int16_t rpm_1;	// My Data
+	int16_t rpm_2;
+	int16_t rpm_3;  // My Data
+	int16_t temp_1;
+	uint8_t	mode;			// register values
+	uint8_t	config;			// register values
+	uint8_t	id;				// never changes
+};
+
+// buffer
+static union {
+	reg_map map;
+	uint8_t bytes[];
+} _buffer;
+
+#endif
+
 void setup(){
-   
-   pinMode(RPM_Input_1, INPUT_PULLUP);
-   pinMode(Arming_Pin, INPUT_PULLUP);
+   pinMode(RPM_Input_1_Pin, RPM_Input_1_Mode);
+   pinMode(Arming_Pin, Arming_Mode);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
-   pinMode(BoardLED, OUTPUT);  
+   pinMode(BoardLED, OUTPUT);
+
+#if I2C == ENABLED
+
+	// setup the I2C slave
+	Wire.begin(SLAVE_ADDRESS);
+	Wire.onRequest(requestEvent);
+	Wire.onReceive(receiveEvent);
+
+	// init our device ID
+	_buffer.map.id 			= DEVICE_ID;
+#endif
+
 #if Serial_Debug == ENABLED
     serial_debug_init();
 #endif
+
 #if FrSky_Telemetry == ENABLED
     frsky_init();
 #endif
@@ -185,27 +206,21 @@ void fastloop(){			//1000hz stuff goes here
 		trigger_time_old = trigger_time;				// In either case, we need to do this so we can look for new data
 		
 	}
-	
-	
-	
 }
 
 void mediumloop(){			//50hz stuff goes here
-
-	
-	rpm_demand = soft_start();
-	rpm_error = rpm_demand - rpm_measured;
-	if (rpm_demand == 0){
-		torque_demand = 0;
-	} else {
-		torque_demand = get_pi(rpm_error, fiftyhz_dt);
-		torque_demand = constrain (torque_demand, 0, 1000);
-	}
-	SCOutput.write(torque_demand);
-	digitalWrite(BoardLED, LOW);
-	
-	
-	
+    #if Governor_Mode == ENABLED
+    rpm_demand = soft_start();
+    rpm_error = rpm_demand - rpm_measured;
+    if (rpm_demand == 0){
+        torque_demand = 0;
+    } else {
+        torque_demand = get_pi(rpm_error, fiftyhz_dt);
+        torque_demand = constrain (torque_demand, 0, 1000);
+    }
+    SCOutput.write(torque_demand);
+    digitalWrite(BoardLED, LOW);
+	#endif
 }
 
 void slowloop(){			//10hz stuff goes here
@@ -213,11 +228,9 @@ void slowloop(){			//10hz stuff goes here
 }
 
 void superslowloop(){		//1hz stuff goes here
-
-#if Serial_Debug == ENABLED
-	do_serial_debug();	
-#endif
-
+    #if Serial_Debug == ENABLED
+        do_serial_debug();	
+    #endif
 }
 
 float calc_rpm(){
@@ -228,67 +241,69 @@ float calc_rpm(){
 #elif Measurement_Type == Motor_Measurement
 	return (rpm_measured + (((60000000.0/(float)timing)/Gear_Ratio)/(Motor_Poles/2))/2;
 #endif
-	
 }
-	
+
+#if Governor_Mode == ENABLED
+
 float soft_start(){
 
-static int rsc_ramp;
-float rsc_output;
-			
-	if ( armed() ){
-		if (rsc_ramp < RSC_Ramp_Up_Rate * 50){
-			rsc_ramp++;
-			rsc_output = (float)map(rsc_ramp, 0, RSC_Ramp_Up_Rate * 50, 0, Target_RPM);
-		} else {
-			rsc_output = (float)Target_RPM;
-		}
-		return rsc_output;
-	} else {
-		rsc_ramp--;				//Return RSC Ramp to 0 slowly, allowing for "warm restart"
-		if (rsc_ramp < 0){
-			rsc_ramp = 0;
-		}
-		rsc_output = 0; 		//Just to be sure RSC output is 0
-		return rsc_output;
-	}
-	
+    static int rsc_ramp;
+    float rsc_output;
+            
+    if ( armed() ){
+        if (rsc_ramp < RSC_Ramp_Up_Rate * 50){
+            rsc_ramp++;
+            rsc_output = (float)map(rsc_ramp, 0, RSC_Ramp_Up_Rate * 50, 0, Target_RPM);
+        } else {
+            rsc_output = (float)Target_RPM;
+        }
+        return rsc_output;
+    } else {
+        rsc_ramp--;				//Return RSC Ramp to 0 slowly, allowing for "warm restart"
+        if (rsc_ramp < 0){
+            rsc_ramp = 0;
+        }
+        rsc_output = 0; 		//Just to be sure RSC output is 0
+        return rsc_output;
+    }
 }
 
 bool armed(){
-	if ( digitalRead(Arming_Pin) == LOW ){
-		return true;
-	}else{
-		return false;
-	}
+    if ( digitalRead(Arming_Pin) == LOW ){
+        return true;
+    }else{
+        return false;
+    }
 }
 
 
 
 float get_pi(float error, float dt){
 
-	return get_p(error) + get_i(error, dt);
+    return get_p(error) + get_i(error, dt);
 }
 
 
 float get_p(float error) {
 
-	return error * PID_kp;
+    return error * PID_kp;
 }
 
 float get_i(float error, float dt){
 
-	if((PID_ki != 0) && (dt != 0)){
-		PID_integrator += (error * PID_ki) * dt;
-		if (PID_integrator < -PID_imax) {
-			PID_integrator = -PID_imax;
-		} else if (PID_integrator > PID_imax) {
-			PID_integrator = PID_imax;
-		}
-		return PID_integrator;
-	}
-	return 0;
+    if((PID_ki != 0) && (dt != 0)){
+        PID_integrator += (error * PID_ki) * dt;
+        if (PID_integrator < -PID_imax) {
+            PID_integrator = -PID_imax;
+        } else if (PID_integrator > PID_imax) {
+            PID_integrator = PID_imax;
+        }
+        return PID_integrator;
+    }
+    return 0;
 }
+
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /*
@@ -318,15 +333,43 @@ void serial_debug_init(){
     Serial.println(timing);
 }
 
-void do_serial_debug(){	
-	Serial.print ("RPM =");
+void do_serial_debug(){
+	Serial.print ("RPM 1 = ");
 	Serial.println(rpm_measured);
-	Serial.print ("RPM Demand =");
+	Serial.println ("------------------");
+
+	#if I2C == ENABLED
+	Serial.println("I2C Info");
+    //Serial.println("buff: %d\n", sizeof(_buffer));
+    Serial.print ("Status = ");
+    Serial.println(_buffer.map.status);
+    Serial.print ("RPM 1 = ");
+    Serial.println(_buffer.map.rpm_1);
+    Serial.print ("RPM 2 = ");
+    Serial.println(_buffer.map.rpm_2);
+    Serial.print ("RPM 3 = ");
+    Serial.println(_buffer.map.rpm_3);
+    Serial.print ("Temp 1 = ");
+    Serial.println(_buffer.map.temp_1);
+    Serial.print ("Mode = ");
+    Serial.println(_buffer.map.mode);
+    Serial.print ("Config = ");
+    Serial.println(_buffer.map.config);
+    Serial.print ("Device ID = ");
+    Serial.println(_buffer.map.id);
+    Serial.println ("------------------");
+    #endif
+
+	#if Governor_Mode == ENABLED
+	Serial.println("Governor Info");
+	Serial.print ("RPM Demand = ");
 	Serial.println(rpm_demand);
-	Serial.print ("Error =");
+	Serial.print ("Error = ");
 	Serial.println(rpm_error);
-	Serial.print ("Torque =");
+	Serial.print ("Torque = ");
 	Serial.println (torque_demand);
+	Serial.println ("------------------");
+	#endif
 }
 
 #endif
@@ -425,3 +468,61 @@ void inline send_RPM(void){
 }
 
 #endif //FrSky_Telemetry
+
+#if I2C == ENABLED
+void changeModeConfig()
+{
+	 if(mode_available){
+		mode_register 		= mode_data;
+		mode_available		= false;		// always make sure to reset the flags before returning from the function
+		mode_data 			= 0;
+	}
+
+	if(config_available){
+		config_register 	= config_data;
+		config_available 	= false;		// always make sure to reset the flags before returning from the function
+		config_data 		= 0;
+	}
+}
+
+void requestEvent()
+{
+    // copy over rpm values
+	_buffer.map.rpm_1 = rpm_measured;   // attach measured rpm 1
+	_buffer.map.rpm_2 = 0;              // Pending more rpm inputs
+	_buffer.map.rpm_3 = 0;              // Pending more rpm inputs
+	_buffer.map.temp_1 = 0;             // Pending temperature input
+
+	//Set the buffer to send all bytes
+	Wire.write(_buffer.bytes, sizeof(_buffer));
+}
+
+void receiveEvent(int bytesReceived)
+{
+    /*
+	for (int a = 0; a < bytesReceived; a++){
+		if(a < MAX_SENT_BYTES){
+			receivedCommands[a] = Wire.read();
+		} else {
+			Wire.read();	// if we receive more data then allowed just throw it away
+		}
+	}
+
+	switch(receivedCommands[0]){
+		case MODE_REG:
+			mode_available = true; // this variable is a status flag to let us know we have new data in register MODE_REG
+			mode_data = receivedCommands[1]; // save the data to a separate variable
+			break;
+
+		case CONFIG_REG:
+			config_available = true;
+			config_data = receivedCommands[1];
+			break;
+
+		default:
+			return; // ignore the commands and return
+
+	}
+	*/
+}
+#endif
