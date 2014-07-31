@@ -12,6 +12,7 @@
 #define FrSky_Telemetry DISABLED
 
 // Hardware config
+#define Governor_Mode ENABLED
 #define BoardLED 13
 #define RPM_Input_1_Pin 2        // Uno, Ethernet 2, Mega2560 2, Leonado 3
 #define Arming_Pin 4

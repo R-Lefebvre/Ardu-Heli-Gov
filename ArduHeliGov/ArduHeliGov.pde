@@ -38,10 +38,7 @@ requires input of number of poles, and gear ratio.
 #include <SCDriver.h> 
 #include <config.h>
 
-float rpm_measured = 0.0;							// Latest measured RPM value
-float rpm_demand;								// RPM setpoint after the soft-start ramp
-float rpm_error;								// Current RPM error
-int	torque_demand;								// % throttle to request from controller
+float rpm_measured = 0.0;						// Latest measured RPM value
 volatile unsigned long trigger_time = 0;		// Trigger time of latest interrupt
 volatile unsigned long trigger_time_old = 0;	// Trigger time of last interrupt
 unsigned long last_calc_time = 0;				// Trigger time of last speed calculated
@@ -52,21 +49,21 @@ bool timing_overflow_skip = true;				// Bit used to signal micros() timer overfl
 												// the first data point collected after booting
 												// because it is flaky.
 
+#if Governor_Mode == ENABLED
+float rpm_demand;								// RPM setpoint after the soft-start ramp
+float rpm_error;								// Current RPM error
+int	torque_demand;								// % throttle to request from controller
+long PID_integrator;							// Integrator for the PID loop
+#endif
 
-
-unsigned long fast_loop_timer = 0;			// Time in microseconds of 1000hz control loop
+unsigned long fast_loop_timer = 0;			    // Time in microseconds of 1000hz control loop
 unsigned long last_fast_loop_timer = 0;		// Time in microseconds of the previous fast loop
-unsigned long fiftyhz_loop_timer = 0;		// Time in milliseconds of 50hz control loop
-unsigned long last_fiftyhz_loop_timer = 0;	// Time in milliseconds of the previous loop, used to calculate dt
-unsigned int fiftyhz_dt= 0 ;				// Time since the last 50 Hz loop
+unsigned long fiftyhz_loop_timer = 0;		    // Time in milliseconds of 50hz control loop
+unsigned long last_fiftyhz_loop_timer = 0;	    // Time in milliseconds of the previous loop, used to calculate dt
+unsigned int fiftyhz_dt= 0 ;				    // Time since the last 50 Hz loop
 unsigned long tenhz_loop_timer = 0;			// Time in milliseconds of the 10hz control loop
 unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control loop
-
-
-
-long PID_integrator;							// Integrator for the PID loop
-
-unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
+unsigned int rotation_time;					// Time in microseconds for one rotation of rotor
 
 SCDriver SCOutput;								// Create Speed Control output object
 
@@ -162,27 +159,21 @@ void fastloop(){			//1000hz stuff goes here
 		trigger_time_old = trigger_time;				// In either case, we need to do this so we can look for new data
 		
 	}
-	
-	
-	
 }
 
 void mediumloop(){			//50hz stuff goes here
-
-	
-	rpm_demand = soft_start();
-	rpm_error = rpm_demand - rpm_measured;
-	if (rpm_demand == 0){
-		torque_demand = 0;
-	} else {
-		torque_demand = get_pi(rpm_error, fiftyhz_dt);
-		torque_demand = constrain (torque_demand, 0, 1000);
-	}
-	SCOutput.write(torque_demand);
-	digitalWrite(BoardLED, LOW);
-	
-	
-	
+    #if Governor_Mode == ENABLED
+    rpm_demand = soft_start();
+    rpm_error = rpm_demand - rpm_measured;
+    if (rpm_demand == 0){
+        torque_demand = 0;
+    } else {
+        torque_demand = get_pi(rpm_error, fiftyhz_dt);
+        torque_demand = constrain (torque_demand, 0, 1000);
+    }
+    SCOutput.write(torque_demand);
+    digitalWrite(BoardLED, LOW);
+	#endif
 }
 
 void slowloop(){			//10hz stuff goes here
@@ -190,11 +181,9 @@ void slowloop(){			//10hz stuff goes here
 }
 
 void superslowloop(){		//1hz stuff goes here
-
-#if Serial_Debug == ENABLED
-	do_serial_debug();	
-#endif
-
+    #if Serial_Debug == ENABLED
+        do_serial_debug();	
+    #endif
 }
 
 float calc_rpm(){
@@ -205,67 +194,69 @@ float calc_rpm(){
 #elif Measurement_Type == Motor_Measurement
 	return (rpm_measured + (((60000000.0/(float)timing)/Gear_Ratio)/(Motor_Poles/2))/2;
 #endif
-	
 }
-	
+
+#if Governor_Mode == ENABLED
+
 float soft_start(){
 
-static int rsc_ramp;
-float rsc_output;
-			
-	if ( armed() ){
-		if (rsc_ramp < RSC_Ramp_Up_Rate * 50){
-			rsc_ramp++;
-			rsc_output = (float)map(rsc_ramp, 0, RSC_Ramp_Up_Rate * 50, 0, Target_RPM);
-		} else {
-			rsc_output = (float)Target_RPM;
-		}
-		return rsc_output;
-	} else {
-		rsc_ramp--;				//Return RSC Ramp to 0 slowly, allowing for "warm restart"
-		if (rsc_ramp < 0){
-			rsc_ramp = 0;
-		}
-		rsc_output = 0; 		//Just to be sure RSC output is 0
-		return rsc_output;
-	}
-	
+    static int rsc_ramp;
+    float rsc_output;
+            
+    if ( armed() ){
+        if (rsc_ramp < RSC_Ramp_Up_Rate * 50){
+            rsc_ramp++;
+            rsc_output = (float)map(rsc_ramp, 0, RSC_Ramp_Up_Rate * 50, 0, Target_RPM);
+        } else {
+            rsc_output = (float)Target_RPM;
+        }
+        return rsc_output;
+    } else {
+        rsc_ramp--;				//Return RSC Ramp to 0 slowly, allowing for "warm restart"
+        if (rsc_ramp < 0){
+            rsc_ramp = 0;
+        }
+        rsc_output = 0; 		//Just to be sure RSC output is 0
+        return rsc_output;
+    }
 }
 
 bool armed(){
-	if ( digitalRead(Arming_Pin) == LOW ){
-		return true;
-	}else{
-		return false;
-	}
+    if ( digitalRead(Arming_Pin) == LOW ){
+        return true;
+    }else{
+        return false;
+    }
 }
 
 
 
 float get_pi(float error, float dt){
 
-	return get_p(error) + get_i(error, dt);
+    return get_p(error) + get_i(error, dt);
 }
 
 
 float get_p(float error) {
 
-	return error * PID_kp;
+    return error * PID_kp;
 }
 
 float get_i(float error, float dt){
 
-	if((PID_ki != 0) && (dt != 0)){
-		PID_integrator += (error * PID_ki) * dt;
-		if (PID_integrator < -PID_imax) {
-			PID_integrator = -PID_imax;
-		} else if (PID_integrator > PID_imax) {
-			PID_integrator = PID_imax;
-		}
-		return PID_integrator;
-	}
-	return 0;
+    if((PID_ki != 0) && (dt != 0)){
+        PID_integrator += (error * PID_ki) * dt;
+        if (PID_integrator < -PID_imax) {
+            PID_integrator = -PID_imax;
+        } else if (PID_integrator > PID_imax) {
+            PID_integrator = PID_imax;
+        }
+        return PID_integrator;
+    }
+    return 0;
 }
+
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 /*
