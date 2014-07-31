@@ -36,7 +36,7 @@ requires input of number of poles, and gear ratio.
 */
 
 #include <SCDriver.h> 
-#include <config.h>
+#include "config.h"
 
 float rpm_measured = 0.0;						// Latest measured RPM value
 volatile unsigned long trigger_time = 0;		// Trigger time of latest interrupt
@@ -68,15 +68,16 @@ unsigned int rotation_time;					// Time in microseconds for one rotation of roto
 SCDriver SCOutput;								// Create Speed Control output object
 
 void setup(){
-   
-   pinMode(RPM_Input_1, RPM_Input_1_Mode);
+   pinMode(RPM_Input_1_Pin, RPM_Input_1_Mode);
    pinMode(Arming_Pin, Arming_Mode);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
-   pinMode(BoardLED, OUTPUT);  
+   pinMode(BoardLED, OUTPUT);
+
 #if Serial_Debug == ENABLED
     serial_debug_init();
 #endif
+
 #if FrSky_Telemetry == ENABLED
     frsky_init();
 #endif
@@ -286,17 +287,21 @@ void serial_debug_init(){
     Serial.println(timing);
 }
 
-void do_serial_debug(){	
-	Serial.print ("RPM =");
+void do_serial_debug(){
+	Serial.print ("RPM 1 = ");
 	Serial.println(rpm_measured);
-    #if Governor_Mode == ENABLED
-	Serial.print ("RPM Demand =");
+	Serial.println ("------------------");
+
+	#if Governor_Mode == ENABLED
+	Serial.println("Governor Info");
+	Serial.print ("RPM Demand = ");
 	Serial.println(rpm_demand);
-	Serial.print ("Error =");
+	Serial.print ("Error = ");
 	Serial.println(rpm_error);
-	Serial.print ("Torque =");
+	Serial.print ("Torque = ");
 	Serial.println (torque_demand);
-    #endif
+	Serial.println ("------------------");
+	#endif
 }
 
 #endif
