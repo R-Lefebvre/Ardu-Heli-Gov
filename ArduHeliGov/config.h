@@ -38,4 +38,9 @@
 #define INPUT_PULLUP 2
 #define OUTPUT 3
 
+// I2C config
+#define I2C                     ENABLED
+#define SLAVE_ADDRESS      		0x29 // Slave address,any number from 0x01 to 0x7F
+#define DEVICE_ID      			122  // Not sure what this should be
+
 #endif // _CONFIG_H
