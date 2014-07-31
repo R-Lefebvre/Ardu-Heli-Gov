@@ -36,30 +36,8 @@ requires input of number of poles, and gear ratio.
 */
 
 #include <SCDriver.h> 
-
-#define ENABLED 1
-#define DISABLED 0
-
-#define Serial_Debug DISABLED
-#define FrSky_Telemetry ENABLED
-
-#define PID_kp 1.0
-#define PID_ki 0.0
-#define PID_imax 0.0
-
-#define BoardLED 13
-#define RPM_Input_1 2
-#define Arming_Pin 4
-#define SCOutput_Pin 8
-#define Direct_Measurement 1
-#define Motor_Measurement 2
-#define Measurement_Type Direct_Measurement
-#define Motor_Poles 2
-#define Gear_Ratio 2
-#define PulsesPerRevolution 1
-#define RSC_Ramp_Up_Rate 10						// Soft Start Ramp Rate in seconds
-#define Target_RPM 1000
-
+#include <Wire.h>
+#include "config.h"
 
 float rpm_measured = 0.0;							// Latest measured RPM value
 float rpm_demand;								// RPM setpoint after the soft-start ramp
@@ -93,10 +71,43 @@ unsigned int rotation_time;						// Time in microseconds for one rotation of rot
 
 SCDriver SCOutput;								// Create Speed Control output object
 
+#if I2C == ENABLED
+
+// where we store the values
+static uint8_t	mode_register;
+static uint8_t	config_register;
+
+// incoming data buffer
+static uint8_t 	mode_data;
+static uint8_t 	config_data;
+
+// new data flag
+static bool 	mode_available;
+static bool 	config_available;
+
+struct reg_map {
+	uint8_t status;			// I2C status
+	int16_t rpm_1;	// My Data
+	int16_t rpm_2;
+	int16_t rpm_3;  // My Data
+	int16_t temp_1;
+	uint8_t	mode;			// register values
+	uint8_t	config;			// register values
+	uint8_t	id;				// never changes
+};
+
+// buffer
+static union {
+	reg_map map;
+	uint8_t bytes[];
+} _buffer;
+
+#endif
+
 void setup(){
    
-   pinMode(RPM_Input_1, INPUT_PULLUP);
-   pinMode(Arming_Pin, INPUT_PULLUP);
+   pinMode(RPM_Input_1_Pin, RPM_Input_1_Mode);
+   pinMode(Arming_Pin, Arming_Mode);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
    pinMode(BoardLED, OUTPUT);  
@@ -105,6 +116,16 @@ void setup(){
 #endif
 #if FrSky_Telemetry == ENABLED
     frsky_init();
+#endif
+
+#if I2C == ENABLED
+	// setup the I2C slave
+	Wire.begin(SLAVE_ADDRESS);
+	Wire.onRequest(requestEvent);
+	Wire.onReceive(receiveEvent);
+
+	// init our device ID
+	_buffer.map.id 			= DEVICE_ID;
 #endif
 }
 
@@ -319,14 +340,41 @@ void serial_debug_init(){
 }
 
 void do_serial_debug(){	
-	Serial.print ("RPM =");
+	Serial.print ("RPM 1 = ");
 	Serial.println(rpm_measured);
-	Serial.print ("RPM Demand =");
+	Serial.println ("------------------");
+
+	#if I2C == ENABLED
+	// I2C info only get populated in the map when the master device sends a request
+	// Therefore, only the device ID will be non-zero until we get a request
+	Serial.println("I2C Info");
+    Serial.print ("Status = ");
+    Serial.println(_buffer.map.status);
+    Serial.print ("RPM 1 = ");
+    Serial.println(_buffer.map.rpm_1);
+    Serial.print ("RPM 2 = ");
+    Serial.println(_buffer.map.rpm_2);
+    Serial.print ("RPM 3 = ");
+    Serial.println(_buffer.map.rpm_3);
+    Serial.print ("Temp 1 = ");
+    Serial.println(_buffer.map.temp_1);
+    Serial.print ("Mode = ");
+    Serial.println(_buffer.map.mode);
+    Serial.print ("Config = ");
+    Serial.println(_buffer.map.config);
+    Serial.print ("Device ID = ");
+    Serial.println(_buffer.map.id);
+    Serial.println ("------------------");
+    #endif
+
+	Serial.println("Governor Info");
+	Serial.print ("RPM Demand = ");
 	Serial.println(rpm_demand);
-	Serial.print ("Error =");
+	Serial.print ("Error = ");
 	Serial.println(rpm_error);
-	Serial.print ("Torque =");
+	Serial.print ("Torque = ");
 	Serial.println (torque_demand);
+	Serial.println ("------------------");
 }
 
 #endif
@@ -425,3 +473,61 @@ void inline send_RPM(void){
 }
 
 #endif //FrSky_Telemetry
+
+#if I2C == ENABLED
+void changeModeConfig()
+{
+	 if(mode_available){
+		mode_register 		= mode_data;
+		mode_available		= false;		// always make sure to reset the flags before returning from the function
+		mode_data 			= 0;
+	}
+
+	if(config_available){
+		config_register 	= config_data;
+		config_available 	= false;		// always make sure to reset the flags before returning from the function
+		config_data 		= 0;
+	}
+}
+
+void requestEvent()
+{
+    // copy over rpm values
+	_buffer.map.rpm_1 = rpm_measured;   // attach measured rpm 1
+	_buffer.map.rpm_2 = 0;              // Pending more rpm inputs
+	_buffer.map.rpm_3 = 0;              // Pending more rpm inputs
+	_buffer.map.temp_1 = 0;             // Pending temperature input
+
+	//Set the buffer to send all bytes
+	Wire.write(_buffer.bytes, sizeof(_buffer));
+}
+
+void receiveEvent(int bytesReceived)
+{
+    /*
+	for (int a = 0; a < bytesReceived; a++){
+		if(a < MAX_SENT_BYTES){
+			receivedCommands[a] = Wire.read();
+		} else {
+			Wire.read();	// if we receive more data then allowed just throw it away
+		}
+	}
+
+	switch(receivedCommands[0]){
+		case MODE_REG:
+			mode_available = true; // this variable is a status flag to let us know we have new data in register MODE_REG
+			mode_data = receivedCommands[1]; // save the data to a separate variable
+			break;
+
+		case CONFIG_REG:
+			config_available = true;
+			config_data = receivedCommands[1];
+			break;
+
+		default:
+			return; // ignore the commands and return
+
+	}
+	*/
+}
+#endif
