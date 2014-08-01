@@ -36,30 +36,7 @@ requires input of number of poles, and gear ratio.
 */
 
 #include <SCDriver.h> 
-
-#define ENABLED 1
-#define DISABLED 0
-
-#define Serial_Debug DISABLED
-#define FrSky_Telemetry ENABLED
-
-#define PID_kp 1.0
-#define PID_ki 0.0
-#define PID_imax 0.0
-
-#define BoardLED 13
-#define RPM_Input_1 2
-#define Arming_Pin 4
-#define SCOutput_Pin 8
-#define Direct_Measurement 1
-#define Motor_Measurement 2
-#define Measurement_Type Direct_Measurement
-#define Motor_Poles 2
-#define Gear_Ratio 2
-#define PulsesPerRevolution 1
-#define RSC_Ramp_Up_Rate 10						// Soft Start Ramp Rate in seconds
-#define Target_RPM 1000
-
+#include "config.h"
 
 float rpm_measured = 0.0;							// Latest measured RPM value
 float rpm_demand;								// RPM setpoint after the soft-start ramp
@@ -95,8 +72,8 @@ SCDriver SCOutput;								// Create Speed Control output object
 
 void setup(){
    
-   pinMode(RPM_Input_1, INPUT_PULLUP);
-   pinMode(Arming_Pin, INPUT_PULLUP);
+   pinMode(RPM_Input_1_Pin, RPM_Input_1_Mode);
+   pinMode(Arming_Pin, Arming_Mode);
    attachInterrupt(0, rpm_fun, RISING);
    SCOutput.attach(SCOutput_Pin);
    pinMode(BoardLED, OUTPUT);  
@@ -319,14 +296,18 @@ void serial_debug_init(){
 }
 
 void do_serial_debug(){	
-	Serial.print ("RPM =");
+	Serial.print ("RPM 1 = ");
 	Serial.println(rpm_measured);
-	Serial.print ("RPM Demand =");
+	Serial.println ("------------------");
+	
+	Serial.println("Governor Info");
+	Serial.print ("RPM Demand = ");
 	Serial.println(rpm_demand);
-	Serial.print ("Error =");
+	Serial.print ("Error = ");
 	Serial.println(rpm_error);
-	Serial.print ("Torque =");
+	Serial.print ("Torque = ");
 	Serial.println (torque_demand);
+	Serial.println ("------------------");
 }
 
 #endif
