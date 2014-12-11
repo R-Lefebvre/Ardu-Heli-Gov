@@ -35,8 +35,6 @@ requires input of number of poles, and gear ratio.
 
 */
 
-#include <SCDriver.h> 
-
 #define ENABLED 1
 #define DISABLED 0
 
@@ -44,21 +42,15 @@ requires input of number of poles, and gear ratio.
 
 #define BoardLED 13
 #define RPM_Input_1 2
-#define Arming_Pin 4
 #define Direct_Measurement 1
 #define Motor_Measurement 2
 #define Measurement_Type Direct_Measurement
 #define Motor_Poles 2
 #define Gear_Ratio 2
 #define PulsesPerRevolution 1
-#define RSC_Ramp_Up_Rate 10						// Soft Start Ramp Rate in seconds
-#define Target_RPM 1000
 
 
-float rpm_measured = 0.0;							// Latest measured RPM value
-float rpm_demand;								// RPM setpoint after the soft-start ramp
-float rpm_error;								// Current RPM error
-int	torque_demand;								// % throttle to request from controller
+float rpm_measured = 0.0;						// Latest measured RPM value
 volatile unsigned long trigger_time = 0;		// Trigger time of latest interrupt
 volatile unsigned long trigger_time_old = 0;	// Trigger time of last interrupt
 unsigned long last_calc_time = 0;				// Trigger time of last speed calculated
@@ -85,7 +77,6 @@ unsigned int rotation_time;						// Time in microseconds for one rotation of rot
 void setup(){
    
    pinMode(RPM_Input_1, INPUT_PULLUP);
-   pinMode(Arming_Pin, INPUT_PULLUP);
    attachInterrupt(0, rpm_fun, RISING);
    pinMode(BoardLED, OUTPUT);  
 #if Serial_Debug == ENABLED
@@ -98,8 +89,7 @@ void loop(){
 unsigned long timer = millis();						// Time in milliseconds of current loop
 
 
-	if (( micros() - fast_loop_timer) >= 1000){
-	
+	if (( micros() - fast_loop_timer) >= 1000){	
 		fast_loop_timer = micros();
 		if (!micros_overflow()){
 			fastloop();
@@ -109,43 +99,31 @@ unsigned long timer = millis();						// Time in milliseconds of current loop
 			timing_overflow_skip == true;			//and the next one
 		}
 		last_fast_loop_timer = fast_loop_timer;
-
 	}	
 	
-	if ((timer - fiftyhz_loop_timer) >= 20) {
-	
+	if ((timer - fiftyhz_loop_timer) >= 20) {	
 		last_fiftyhz_loop_timer = fiftyhz_loop_timer;
 		fiftyhz_loop_timer = timer;
 		fiftyhz_dt = last_fiftyhz_loop_timer - fiftyhz_loop_timer;
-		mediumloop();
-	
+		mediumloop();	
 	}
 	
-	if ((timer - tenhz_loop_timer) >= 10) {
-	
+	if ((timer - tenhz_loop_timer) >= 10) {	
 		tenhz_loop_timer = timer;
-		slowloop();
-	
+		slowloop();	
 	}
 	
-	if ((timer - onehz_loop_timer) >= 1000) {
-	
+	if ((timer - onehz_loop_timer) >= 1000) {	
 		onehz_loop_timer = timer;
-		superslowloop();
-	
+		superslowloop();	
 	}	
 }
 
-void rpm_fun(){							//Each pulse, this interrupt function is run
-	
+void rpm_fun(){							//Each pulse, this interrupt function is run	
 	trigger_time = micros();
 }
 
-
-
-void fastloop(){			//1000hz stuff goes here
-
-	
+void fastloop(){			//1000hz stuff goes here	
 	if ( (trigger_time_old + (3 * timing)) < fast_loop_timer ){			// We have lost more than 1 expected pulse, start to decay the measured RPM
 		rpm_measured -= 0.25;
 		if (rpm_measured <0){
@@ -162,18 +140,11 @@ void fastloop(){			//1000hz stuff goes here
 		} else {									
 			timing_overflow_skip = false;				// If micros has overflowed, reset the skip bit since we have thrown away this bad data
 		}
-		trigger_time_old = trigger_time;				// In either case, we need to do this so we can look for new data
-		
-	}
-	
-	
-	
+		trigger_time_old = trigger_time;				// In either case, we need to do this so we can look for new data		
+	}	
 }
 
 void mediumloop(){			//50hz stuff goes here
-
-	
-	rpm_demand = soft_start();
 	rpm_error = rpm_demand - rpm_measured;
 	if (rpm_demand == 0){
 		torque_demand = 0;
@@ -181,10 +152,7 @@ void mediumloop(){			//50hz stuff goes here
 		torque_demand = get_pi(rpm_error, fiftyhz_dt);
 		torque_demand = constrain (torque_demand, 0, 1000);
 	}
-	digitalWrite(BoardLED, LOW);
-	
-	
-	
+	digitalWrite(BoardLED, LOW);	
 }
 
 void slowloop(){			//10hz stuff goes here
@@ -200,46 +168,12 @@ void superslowloop(){		//1hz stuff goes here
 }
 
 float calc_rpm(){
-
-	
 #if Measurement_Type == Direct_Measurement
 	return (rpm_measured + (60000000.0/(float)timing)/PulsesPerRevolution)/2 ;				//Simple Low-pass Filter
 #elif Measurement_Type == Motor_Measurement
 	return (rpm_measured + (((60000000.0/(float)timing)/Gear_Ratio)/(Motor_Poles/2))/2;
 #endif
 	
-}
-	
-float soft_start(){
-
-static int rsc_ramp;
-float rsc_output;
-			
-	if ( armed() ){
-		if (rsc_ramp < RSC_Ramp_Up_Rate * 50){
-			rsc_ramp++;
-			rsc_output = (float)map(rsc_ramp, 0, RSC_Ramp_Up_Rate * 50, 0, Target_RPM);
-		} else {
-			rsc_output = (float)Target_RPM;
-		}
-		return rsc_output;
-	} else {
-		rsc_ramp--;				//Return RSC Ramp to 0 slowly, allowing for "warm restart"
-		if (rsc_ramp < 0){
-			rsc_ramp = 0;
-		}
-		rsc_output = 0; 		//Just to be sure RSC output is 0
-		return rsc_output;
-	}
-	
-}
-
-bool armed(){
-	if ( digitalRead(Arming_Pin) == LOW ){
-		return true;
-	}else{
-		return false;
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
