@@ -35,19 +35,19 @@ requires input of number of poles, and gear ratio.
 
 */
 
-#define ENABLED 1
-#define DISABLED 0
+#define ENABLED 				1
+#define DISABLED 				0
 
-#define Serial_Debug DISABLED
+#define Serial_Debug 			ENABLED
 
-#define BoardLED 13
-#define RPM_Input_1 2
-#define Direct_Measurement 1
-#define Motor_Measurement 2
-#define Measurement_Type Direct_Measurement
-#define Motor_Poles 2
-#define Gear_Ratio 2
-#define PulsesPerRevolution 1
+#define BoardLED 				13
+#define RPM_Input_1 			2
+#define Direct_Measurement 		1
+#define Motor_Measurement 		2
+#define Measurement_Type 		Direct_Measurement
+#define Motor_Poles 			2
+#define Gear_Ratio 				2
+#define PulsesPerRevolution 	1
 
 
 float rpm_measured = 0.0;						// Latest measured RPM value
@@ -63,31 +63,27 @@ bool timing_overflow_skip = true;				// Bit used to signal micros() timer overfl
 
 
 
-unsigned long fast_loop_timer = 0;			// Time in microseconds of 1000hz control loop
-unsigned long last_fast_loop_timer = 0;		// Time in microseconds of the previous fast loop
-unsigned long fiftyhz_loop_timer = 0;		// Time in milliseconds of 50hz control loop
-unsigned long last_fiftyhz_loop_timer = 0;	// Time in milliseconds of the previous loop, used to calculate dt
-unsigned int fiftyhz_dt= 0 ;				// Time since the last 50 Hz loop
-unsigned long tenhz_loop_timer = 0;			// Time in milliseconds of the 10hz control loop
-unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control loop
-
-
+unsigned long fast_loop_timer = 0;				// Time in microseconds of 1000hz control loop
+unsigned long last_fast_loop_timer = 0;			// Time in microseconds of the previous fast loop
+unsigned long fiftyhz_loop_timer = 0;			// Time in milliseconds of 50hz control loop
+unsigned long last_fiftyhz_loop_timer = 0;		// Time in milliseconds of the previous loop, used to calculate dt
+unsigned int fiftyhz_dt= 0 ;					// Time since the last 50 Hz loop
+unsigned long tenhz_loop_timer = 0;				// Time in milliseconds of the 10hz control loop
+unsigned long onehz_loop_timer = 0;				// Time in milliseconds of the 1hz control loop
 unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
 
 void setup(){
-   
    pinMode(RPM_Input_1, INPUT_PULLUP);
    attachInterrupt(0, rpm_fun, RISING);
    pinMode(BoardLED, OUTPUT);  
 #if Serial_Debug == ENABLED
-    serial_debug_init();
+   serial_debug_init();
 #endif
 }
 
 void loop(){
 
 unsigned long timer = millis();						// Time in milliseconds of current loop
-
 
 	if (( micros() - fast_loop_timer) >= 1000){	
 		fast_loop_timer = micros();
@@ -145,13 +141,6 @@ void fastloop(){			//1000hz stuff goes here
 }
 
 void mediumloop(){			//50hz stuff goes here
-	rpm_error = rpm_demand - rpm_measured;
-	if (rpm_demand == 0){
-		torque_demand = 0;
-	} else {
-		torque_demand = get_pi(rpm_error, fiftyhz_dt);
-		torque_demand = constrain (torque_demand, 0, 1000);
-	}
 	digitalWrite(BoardLED, LOW);	
 }
 
@@ -160,11 +149,9 @@ void slowloop(){			//10hz stuff goes here
 }
 
 void superslowloop(){		//1hz stuff goes here
-
 #if Serial_Debug == ENABLED
 	do_serial_debug();	
 #endif
-
 }
 
 float calc_rpm(){
@@ -172,8 +159,7 @@ float calc_rpm(){
 	return (rpm_measured + (60000000.0/(float)timing)/PulsesPerRevolution)/2 ;				//Simple Low-pass Filter
 #elif Measurement_Type == Motor_Measurement
 	return (rpm_measured + (((60000000.0/(float)timing)/Gear_Ratio)/(Motor_Poles/2))/2;
-#endif
-	
+#endif	
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -185,7 +171,6 @@ ignore any data collected during the period.
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool micros_overflow(){
-
 	if (micros() > last_fast_loop_timer) {			// Micros() have not overflowed because it has incremented since last fast loop
 		return false;
 	} else {
@@ -207,12 +192,6 @@ void serial_debug_init(){
 void do_serial_debug(){	
 	Serial.print ("RPM =");
 	Serial.println(rpm_measured);
-	Serial.print ("RPM Demand =");
-	Serial.println(rpm_demand);
-	Serial.print ("Error =");
-	Serial.println(rpm_error);
-	Serial.print ("Torque =");
-	Serial.println (torque_demand);
 }
 
 #endif
