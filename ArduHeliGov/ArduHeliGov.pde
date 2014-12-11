@@ -45,7 +45,6 @@ requires input of number of poles, and gear ratio.
 #define BoardLED 13
 #define RPM_Input_1 2
 #define Arming_Pin 4
-#define SCOutput_Pin 8
 #define Direct_Measurement 1
 #define Motor_Measurement 2
 #define Measurement_Type Direct_Measurement
@@ -83,14 +82,11 @@ unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control
 
 unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
 
-SCDriver SCOutput;								// Create Speed Control output object
-
 void setup(){
    
    pinMode(RPM_Input_1, INPUT_PULLUP);
    pinMode(Arming_Pin, INPUT_PULLUP);
    attachInterrupt(0, rpm_fun, RISING);
-   SCOutput.attach(SCOutput_Pin);
    pinMode(BoardLED, OUTPUT);  
 #if Serial_Debug == ENABLED
     serial_debug_init();
@@ -185,7 +181,6 @@ void mediumloop(){			//50hz stuff goes here
 		torque_demand = get_pi(rpm_error, fiftyhz_dt);
 		torque_demand = constrain (torque_demand, 0, 1000);
 	}
-	SCOutput.write(torque_demand);
 	digitalWrite(BoardLED, LOW);
 	
 	
