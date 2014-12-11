@@ -42,10 +42,6 @@ requires input of number of poles, and gear ratio.
 
 #define Serial_Debug DISABLED
 
-#define PID_kp 1.0
-#define PID_ki 0.0
-#define PID_imax 0.0
-
 #define BoardLED 13
 #define RPM_Input_1 2
 #define Arming_Pin 4
@@ -84,9 +80,6 @@ unsigned int fiftyhz_dt= 0 ;				// Time since the last 50 Hz loop
 unsigned long tenhz_loop_timer = 0;			// Time in milliseconds of the 10hz control loop
 unsigned long onehz_loop_timer = 0;			// Time in milliseconds of the 1hz control loop
 
-
-
-long PID_integrator;							// Integrator for the PID loop
 
 unsigned int rotation_time;						// Time in microseconds for one rotation of rotor
 
@@ -252,33 +245,6 @@ bool armed(){
 	}else{
 		return false;
 	}
-}
-
-
-
-float get_pi(float error, float dt){
-
-	return get_p(error) + get_i(error, dt);
-}
-
-
-float get_p(float error) {
-
-	return error * PID_kp;
-}
-
-float get_i(float error, float dt){
-
-	if((PID_ki != 0) && (dt != 0)){
-		PID_integrator += (error * PID_ki) * dt;
-		if (PID_integrator < -PID_imax) {
-			PID_integrator = -PID_imax;
-		} else if (PID_integrator > PID_imax) {
-			PID_integrator = PID_imax;
-		}
-		return PID_integrator;
-	}
-	return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
